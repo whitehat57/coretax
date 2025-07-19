@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Input XML Coretax</title>
+    <style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f4f4f4;
+        margin: 0;
+        padding: 0;
+    }
+    .container {
+        background: #fff;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h2, h3 {
+        color: #2c3e50;
+    }
+    label {
+        display: block;
+        margin-top: 12px;
+        font-weight: bold;
+    }
+    input, textarea {
+        width: 100%;
+        padding: 8px;
+        margin-top: 4px;
+        margin-bottom: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+    button {
+        background: #3498db;
+        color: #fff;
+        border: none;
+        padding: 10px 18px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 10px;
+    }
+    button:hover {
+        background: #2980b9;
+    }
+    #xmlOutput {
+        background: #f9f9f9;
+        border: 1px solid #ddd;
+    }
+    .good-service {
+        border: 1px solid #e1e1e1;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        background: #fafafa;
+    }
+    .nav {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 10px;
+    }
+    .nav button {
+        background: #95a5a6;
+    }
+    .nav .active {
+        background: #3498db;
+    }
+    .error {
+        color: #e74c3c;
+        font-size: 0.95em;
+        margin-bottom: 10px;
+    }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Form Input XML Coretax</h2>
+        <div id="app"></div>
+    </div>
+    <script>
+    // SPA Coretax Form - All in one file
+    const app = document.getElementById('app');
+    let state = {
+        step: 0, // 0: Daftar Faktur, 1: Faktur Detail, 2: Barang/Jasa, 3: Preview
+        xml: '',
+        invoices: [], // Array of faktur
+        currentInvoice: 0,
+        error: ''
+    };
+
+    const navTitles = ['Daftar Faktur', 'Faktur Detail', 'Barang/Jasa', 'Preview & Export'];
+
+    function renderNav() {
+        return `<div class="nav">${navTitles.map((t,i) => `<button class='${state.step===i?'active':''}' onclick='goStep(${i})'>${t}</button>`).join('')}</div>`;
+    }
+
+    function goStep(i) {
+        state.step = i;
+        state.error = '';
+        render();
+    }
+
+    function render() {
+        let html = renderNav();
+        if(state.step === 0) {
+            html += `<h3>Daftar Faktur Pajak</h3>
+                <button type='button' id='addInvoice'>Tambah Faktur</button>
+                <ul>
+                ${state.invoices.map((inv,i) => `<li>
+                    Faktur #${i+1} - ${inv.taxData ? inv.taxData.BuyerName : '(belum diisi)'}
+                    <button onclick='editInvoice(${i})'>Edit</button>
+                    <button onclick='removeInvoice(${i})'>Hapus</button>
+                </li>`).join('')}
+                </ul>
+                ${state.invoices.length>0?`<button id='previewBtn'>Preview & Export</button>`:''}`;
+        } else if(state.step === 1) {
+            const inv = state.invoices[state.currentInvoice] || {taxData:{}};
+            html += `<form id='taxForm'>
+                <label>TIN:</label><input type='text' name='TIN' value='${inv.taxData.TIN||''}' required><br>
+                <label>Tanggal Faktur:</label><input type='date' name='TaxInvoiceDate' value='${inv.taxData.TaxInvoiceDate||''}' required><br>
+                <label>Opsi Faktur:</label><input type='text' name='TaxInvoiceOpt' value='${inv.taxData.TaxInvoiceOpt||''}' required><br>
+                <label>Kode Transaksi:</label><input type='text' name='TrxCode' value='${inv.taxData.TrxCode||''}' required><br>
+                <label>Seller IDTKU:</label><input type='text' name='SellerIDTKU' value='${inv.taxData.SellerIDTKU||''}' required><br>
+                <label>Buyer TIN:</label><input type='text' name='BuyerTin' value='${inv.taxData.BuyerTin||''}' required><br>
+                <label>Buyer Name:</label><input type='text' name='BuyerName' value='${inv.taxData.BuyerName||''}' required><br>
+                <label>Buyer Address:</label><input type='text' name='BuyerAdress' value='${inv.taxData.BuyerAdress||''}' required><br>
+                <label>Buyer Email:</label><input type='email' name='BuyerEmail' value='${inv.taxData.BuyerEmail||''}'><br>
+                <button type='submit'>Simpan & Lanjut Barang/Jasa</button>
+                <button type='button' id='backToList'>Kembali ke Daftar Faktur</button>
+            </form>`;
+        } else if(state.step === 2) {
+            const inv = state.invoices[state.currentInvoice];
+            html += `<form id='goodsForm'>
+                <div id='goodsContainer'>
+                ${inv.goodServices ? inv.goodServices.map((g,i) => goodServiceForm(i,g)).join('') : ''}
+                </div>
+                <button type='button' id='addGoodService'>Tambah Good/Service</button><br><br>
+                <button type='submit'>Simpan Barang/Jasa</button>
+            </form>`;
+        } else if(state.step === 3) {
+            html += `<h3>Hasil XML:</h3>
+                <textarea id='xmlOutput' rows='20' cols='80' readonly>${generateXML()}</textarea><br>
+                <button onclick='exportXML()'>Export XML</button>
+                <button onclick='goStep(0)'>Kembali ke Daftar Faktur</button>`;
+        }
+        if(state.error) html = `<div class='error'>${state.error}</div>` + html;
+        app.innerHTML = html;
+        if(state.step === 0) {
+            document.getElementById('addInvoice').onclick = () => {
+                state.invoices.push({taxData:{},goodServices:[]});
+                state.currentInvoice = state.invoices.length-1;
+                state.step = 1;
+                render();
+            };
+        }
+        if(state.step === 1) {
+            document.getElementById('taxForm').onsubmit = function(e) {
+                e.preventDefault();
+                handleTaxForm(e);
+            };
+            document.getElementById('backToList').onclick = function() {
+                state.step = 0;
+                render();
+            };
+        }
+        if(state.step === 2) {
+            document.getElementById('addGoodService').onclick = () => {
+                state.invoices[state.currentInvoice].goodServices.push({});
+                render();
+            };
+            document.getElementById('goodsForm').onsubmit = handleGoodsForm;
+            state.invoices[state.currentInvoice].goodServices.forEach((_,i) => {
+                const btn = document.getElementById(`removeGoodService${i}`);
+                if(btn) btn.onclick = () => {
+                    state.invoices[state.currentInvoice].goodServices.splice(i,1);
+                    render();
+                };
+            });
+        }
+        // Hapus event handler duplikat previewBtn di luar blok agar tidak error
+        if(state.step === 3) {
+            document.getElementById('exportBtn').onclick = exportXML;
+        }
+    }
+
+    function editInvoice(i) {
+        state.currentInvoice = i;
+        state.step = 1;
+        render();
+    }
+    function removeInvoice(i) {
+        state.invoices.splice(i,1);
+        if(state.currentInvoice>=state.invoices.length) state.currentInvoice = state.invoices.length-1;
+        render();
+    }
+
+    function goodServiceForm(i,g) {
+        return `<div class='good-service'>
+            <h4>Good/Service #${i+1}</h4>
+            <label>Opt:</label><input type='text' name='Opt${i}' value='${g.Opt||''}' required><br>
+            <label>Code:</label><input type='text' name='Code${i}' value='${g.Code||''}' required><br>
+            <label>Name:</label><input type='text' name='Name${i}' value='${g.Name||''}' required><br>
+            <label>Unit:</label><input type='text' name='Unit${i}' value='${g.Unit||''}' required><br>
+            <label>Price:</label><input type='number' name='Price${i}' value='${g.Price||''}' required><br>
+            <label>Qty:</label><input type='number' name='Qty${i}' value='${g.Qty||''}' required><br>
+            <label>Total Discount:</label><input type='number' name='TotalDiscount${i}' value='${g.TotalDiscount||''}' required><br>
+            <label>Tax Base:</label><input type='number' name='TaxBase${i}' value='${g.TaxBase||''}' required><br>
+            <label>Other Tax Base:</label><input type='number' name='OtherTaxBase${i}' value='${g.OtherTaxBase||''}' required><br>
+            <label>VAT Rate:</label><input type='number' name='VATRate${i}' value='${g.VATRate||''}' required><br>
+            <label>VAT:</label><input type='number' name='VAT${i}' value='${g.VAT||''}' required><br>
+            <label>STLG Rate:</label><input type='number' name='STLGRate${i}' value='${g.STLGRate||''}' required><br>
+            <label>STLG:</label><input type='number' name='STLG${i}' value='${g.STLG||''}' required><br>
+            <button type='button' id='removeGoodService${i}'>Hapus</button>
+        </div>`;
+    }
+
+    function handleTaxForm(e) {
+        e.preventDefault();
+        const f = e.target;
+        let error = '';
+        ['TIN','TaxInvoiceDate','TaxInvoiceOpt','TrxCode','SellerIDTKU','BuyerTin','BuyerName','BuyerAdress'].forEach(n => {
+            if(!f[n].value) error = 'Semua field wajib diisi!';
+        });
+        if(error) {
+            state.error = error;
+            render();
+            return;
+        }
+        // Simpan data ke faktur aktif
+        state.invoices[state.currentInvoice].taxData = {
+            TIN: f.TIN.value,
+            TaxInvoiceDate: f.TaxInvoiceDate.value,
+            TaxInvoiceOpt: f.TaxInvoiceOpt.value,
+            TrxCode: f.TrxCode.value,
+            SellerIDTKU: f.SellerIDTKU.value,
+            BuyerTin: f.BuyerTin.value,
+            BuyerName: f.BuyerName.value,
+            BuyerAdress: f.BuyerAdress.value,
+            BuyerEmail: f.BuyerEmail.value
+        };
+        state.step = 2;
+        state.error = '';
+        render();
+    }
+
+    function handleGoodsForm(e) {
+        e.preventDefault();
+        const inv = state.invoices[state.currentInvoice];
+        if(inv.goodServices.length === 0) {
+            state.error = 'Minimal 1 Good/Service harus diisi!';
+            render();
+            return;
+        }
+        let error = '';
+        inv.goodServices.forEach((g,i) => {
+            ['Opt','Code','Name','Unit','Price','Qty','TotalDiscount','TaxBase','OtherTaxBase','VATRate','VAT','STLGRate','STLG'].forEach(n => {
+                const v = e.target[`${n}${i}`].value;
+                if(!v && error==='') error = `Field ${n} pada Good/Service #${i+1} wajib diisi!`;
+                inv.goodServices[i][n] = v;
+            });
+        });
+        if(error) {
+            state.error = error;
+            render();
+            return;
+        }
+        state.step = 0;
+        state.error = '';
+        render();
+    }
+
+    function generateXML() {
+        if(state.invoices.length===0) return '';
+        let xml = `<?xml version="1.0" encoding="utf-8"?>\n`;
+        xml += `<TaxInvoiceBulk xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n`;
+        xml += `  <TIN>${state.invoices[0].taxData.TIN}</TIN>\n`;
+        xml += `  <ListOfTaxInvoice>\n`;
+        state.invoices.forEach(inv => {
+            xml += `    <TaxInvoice>\n`;
+            xml += `      <TaxInvoiceDate>${inv.taxData.TaxInvoiceDate}</TaxInvoiceDate>\n`;
+            xml += `      <TaxInvoiceOpt>${inv.taxData.TaxInvoiceOpt}</TaxInvoiceOpt>\n`;
+            xml += `      <TrxCode>${inv.taxData.TrxCode}</TrxCode>\n`;
+            xml += `      <AddInfo></AddInfo>\n`;
+            xml += `      <CustomDoc></CustomDoc>\n`;
+            xml += `      <RefDesc></RefDesc>\n`;
+            xml += `      <FacilityStamp></FacilityStamp>\n`;
+            xml += `      <SellerIDTKU>${inv.taxData.SellerIDTKU}</SellerIDTKU>\n`;
+            xml += `      <BuyerTin>${inv.taxData.BuyerTin}</BuyerTin>\n`;
+            xml += `      <BuyerDocument>TIN</BuyerDocument>\n`;
+            xml += `      <BuyerCountry>IDN</BuyerCountry>\n`;
+            xml += `      <BuyerDocumentNumber>-</BuyerDocumentNumber>\n`;
+            xml += `      <BuyerName>${inv.taxData.BuyerName}</BuyerName>\n`;
+            xml += `      <BuyerAdress>${inv.taxData.BuyerAdress}</BuyerAdress>\n`;
+            xml += `      <BuyerEmail>${inv.taxData.BuyerEmail}</BuyerEmail>\n`;
+            xml += `      <BuyerIDTKU>${inv.taxData.BuyerTin}000000</BuyerIDTKU>\n`;
+            xml += `      <ListOfGoodService>\n`;
+            inv.goodServices.forEach(g => {
+                xml += `        <GoodService>\n`;
+                xml += `          <Opt>${g.Opt}</Opt>\n`;
+                xml += `          <Code>${g.Code}</Code>\n`;
+                xml += `          <Name>${g.Name}</Name>\n`;
+                xml += `          <Unit>${g.Unit}</Unit>\n`;
+                xml += `          <Price>${g.Price}</Price>\n`;
+                xml += `          <Qty>${g.Qty}</Qty>\n`;
+                xml += `          <TotalDiscount>${g.TotalDiscount}</TotalDiscount>\n`;
+                xml += `          <TaxBase>${g.TaxBase}</TaxBase>\n`;
+                xml += `          <OtherTaxBase>${g.OtherTaxBase}</OtherTaxBase>\n`;
+                xml += `          <VATRate>${g.VATRate}</VATRate>\n`;
+                xml += `          <VAT>${g.VAT}</VAT>\n`;
+                xml += `          <STLGRate>${g.STLGRate}</STLGRate>\n`;
+                xml += `          <STLG>${g.STLG}</STLG>\n`;
+                xml += `        </GoodService>\n`;
+            });
+            xml += `      </ListOfGoodService>\n    </TaxInvoice>\n`;
+        });
+        xml += `  </ListOfTaxInvoice>\n</TaxInvoiceBulk>`;
+        return xml;
+    }
+
+    function exportXML() {
+        const xml = generateXML();
+        const blob = new Blob([xml], {type: 'application/xml'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'coretax.xml';
+        a.click();
+    }
+
+    // Untuk preview
+    function previewXML() {
+        state.xml = generateXML();
+        render();
+    }
+
+            if (state.invoices.length > 0) {
+                const previewBtn = document.getElementById('previewBtn');
+                if (previewBtn) {
+                    previewBtn.onclick = () => {
+                        state.step = 3;
+                        render();
+                    };
+                }
+            }
+    window.editInvoice = editInvoice;
+    window.removeInvoice = removeInvoice;
+    window.goStep = goStep;
+    window.exportXML = exportXML;
+
+    render();
+    </script>
+</body>
+</html>
