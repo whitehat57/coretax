@@ -230,9 +230,10 @@
     class CoretaxApp {
         constructor() {
             this.app = document.getElementById('app');
+            const saved = localStorage.getItem('coretaxDraft');
             this.state = {
                 step: 0,
-                invoices: [],
+                invoices: saved ? JSON.parse(saved) : [],
                 currentInvoice: 0,
                 error: '',
                 success: ''
@@ -247,7 +248,25 @@
 
         setState(newState) {
             this.state = { ...this.state, ...newState };
+            // Auto-save invoices draft
+            try {
+                localStorage.setItem('coretaxDraft', JSON.stringify(this.state.invoices));
+            } catch (e) {
+                // ignore quota errors
+            }
             this.render();
+        }
+        resetDraft() {
+            if (confirm('Apakah Anda yakin ingin menghapus semua draft faktur?')) {
+                localStorage.removeItem('coretaxDraft');
+                this.setState({
+                    invoices: [],
+                    currentInvoice: 0,
+                    step: 0,
+                    success: 'Draft faktur berhasil direset.',
+                    error: ''
+                });
+            }
         }
 
         clearMessages() {
@@ -329,7 +348,7 @@
                 <h3>Daftar Faktur Pajak</h3>
                 ${this.state.invoices.length > 0 ? this.renderStats() : ''}
                 <button type='button' onclick='app.addInvoice()'>+ Tambah Faktur Baru</button>
-                
+                <button type='button' onclick='app.resetDraft()' class="secondary" style="margin-left:10px;">🔄 Reset Draft</button>
                 ${this.state.invoices.length === 0 ? 
                     '<p style="text-align: center; color: #7f8c8d; margin: 40px 0;">Belum ada faktur. Klik tombol di atas untuk menambah faktur pertama.</p>' :
                     `<div style="margin-top: 20px;">
